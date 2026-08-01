@@ -28,14 +28,11 @@ jobs:
       - name: Build & publish installers
         # electron-builder publishes to this repo's GitHub Releases when it sees a
         # tag build + GH_TOKEN. macOS -> universal .dmg, Windows -> .exe, Linux -> AppImage + .deb.
+        # Unsigned builds (no signing secrets set): the download page + install.sh handle
+        # macOS de-quarantine. To SIGN later, add CSC_LINK / CSC_KEY_PASSWORD (mac+win) and
+        # APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID (notarization), then drop the
+        # CSC_IDENTITY_AUTO_DISCOVERY line below.
         run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # For SIGNED macOS/Windows builds, add these repo secrets and they're picked up
-          # automatically (unsigned still works via the one-line installer / xattr):
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # macOS notarization (optional):
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
