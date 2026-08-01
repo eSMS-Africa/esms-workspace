@@ -22,7 +22,7 @@
   "build": {
     "appId": "io.esmsafrica.workspace",
     "productName": "eSMS Workspace",
-    "publish": [{ "provider": "github", "owner": "eSMS-Africa", "repo": "esms-workspace" }],
+    "publish": [{ "provider": "github", "owner": "eSMS-Africa", "repo": "esms-workspace", "releaseType": "release" }],
     "files": ["main.js", "preload.js", "renderer/**", "package.json"],
     "directories": { "buildResources": "build" },
     "mac": {
