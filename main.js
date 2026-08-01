@@ -125,7 +125,17 @@ if (!app.requestSingleInstanceLock()) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   }
 
+  // Identify the desktop app to our backends so we can see who's on Workspace.
+  // Every webview request carries "eSMSWorkspace/<version>" in the user-agent.
+  try { app.userAgentFallback = `${app.userAgentFallback} eSMSWorkspace/${app.getVersion()}`; } catch (_) {}
+
   app.whenReady().then(() => {
+    // Belt-and-braces: also stamp the shared session's user-agent.
+    try {
+      const s = session.fromPartition('persist:esms');
+      if (!/eSMSWorkspace\//.test(s.getUserAgent())) s.setUserAgent(`${s.getUserAgent()} eSMSWorkspace/${app.getVersion()}`);
+    } catch (_) {}
+
     // Let the eSMS web apps show desktop notifications (new email, etc.) and
     // use the clipboard, without a permission prompt. Everything else is denied.
     try {
