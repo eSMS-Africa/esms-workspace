@@ -1,6 +1,6 @@
 {
   "name": "esms-workspace",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "eSMS Workspace — the eSMS suite (Email, SMS, SMPP, admin) in a native desktop window.",
   "author": "eSMS Africa (Eira Digital Co. Limited)",
   "license": "UNLICENSED",
@@ -33,8 +33,12 @@
     "files": [
       "main.js",
       "preload.js",
+      "webview-preload.js",
       "renderer/**",
       "package.json"
+    ],
+    "asarUnpack": [
+      "webview-preload.js"
     ],
     "directories": {
       "buildResources": "build"

@@ -1,8 +1,11 @@
 'use strict';
 
-const { app, BrowserWindow, shell, ipcMain, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, safeStorage, session } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
+
+const isMac = process.platform === 'darwin';
 
 // Single instance — focus the existing window instead of opening a second.
 if (!app.requestSingleInstanceLock()) {
@@ -17,13 +20,17 @@ if (!app.requestSingleInstanceLock()) {
       minWidth: 940,
       minHeight: 600,
       title: 'eSMS Workspace',
-      backgroundColor: '#0d0e12',
+      backgroundColor: '#1b1712',
       show: false,
       icon: path.join(__dirname, 'build', 'icon.png'),
+      // Native-feeling window: on macOS the traffic lights sit inside our
+      // dark rail; other platforms keep the standard frame.
+      ...(isMac ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 15, y: 20 } } : {}),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
+        sandbox: false,              // trusted preload needs path/url/fs; renderer stays isolated
         webviewTag: true,            // the service panes are <webview>s
         spellcheck: true,
       },
@@ -64,6 +71,37 @@ if (!app.requestSingleInstanceLock()) {
   const isInternal = (url) => {
     try { return /(^|\.)esmsafrica\.io$/.test(new URL(url).hostname); } catch (_) { return false; }
   };
+
+  // ── First-party password vault ──
+  // Logins are saved encrypted by the OS keychain (macOS Keychain / Windows
+  // DPAPI / Linux libsecret) via safeStorage, and only ever for eSMS origins.
+  const vaultFile = () => path.join(app.getPath('userData'), 'logins.json');
+  const readVault = () => { try { return JSON.parse(fs.readFileSync(vaultFile(), 'utf8')); } catch (_) { return {}; } };
+  const writeVault = (v) => { try { fs.writeFileSync(vaultFile(), JSON.stringify(v), { mode: 0o600 }); } catch (_) {} };
+  const canVault = () => { try { return safeStorage.isEncryptionAvailable(); } catch (_) { return false; } };
+  const senderIsEsms = (e) => {
+    try { return /(^|\.)esmsafrica\.io$/.test(new URL(e.senderFrame.url).hostname); } catch (_) { return false; }
+  };
+  const enc = (s) => safeStorage.encryptString(s).toString('base64');
+  const dec = (b64) => safeStorage.decryptString(Buffer.from(b64, 'base64'));
+
+  ipcMain.handle('vault-get', (e, origin) => {
+    if (!senderIsEsms(e) || !canVault()) return null;
+    const rec = readVault()[origin];
+    if (!rec || !rec.p) return null;
+    try { return { username: rec.u ? dec(rec.u) : '', password: dec(rec.p) }; } catch (_) { return null; }
+  });
+  ipcMain.handle('vault-save', (e, data) => {
+    if (!senderIsEsms(e) || !canVault() || !data || !data.password) return false;
+    try {
+      const v = readVault();
+      v[data.origin] = { u: data.username ? enc(data.username) : '', p: enc(data.password) };
+      writeVault(v);
+      return true;
+    } catch (_) { return false; }
+  });
+  ipcMain.handle('vault-count', () => Object.keys(readVault()).length);
+  ipcMain.on('vault-clear', () => { writeVault({}); toRenderer('vault-changed', 0); });
   app.on('web-contents-created', (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
       if (!isInternal(url)) { shell.openExternal(url); return { action: 'deny' }; }
@@ -109,6 +147,18 @@ if (!app.requestSingleInstanceLock()) {
   // Restart to apply a downloaded update.
   ipcMain.on('restart-to-update', () => {
     try { autoUpdater.quitAndInstall(); } catch (_) {}
+  });
+
+  // Manual update check from the settings menu.
+  ipcMain.on('check-updates', () => { autoUpdater.checkForUpdatesAndNotify().catch(() => {}); });
+
+  // Sign out everywhere: wipe the shared session (cookies + storage).
+  ipcMain.handle('sign-out', async () => {
+    try {
+      const ses = session.fromPartition('persist:esms');
+      await ses.clearStorageData();
+      return true;
+    } catch (_) { return false; }
   });
 
   // ── Never stay crashed: recover the shell if its renderer dies ──

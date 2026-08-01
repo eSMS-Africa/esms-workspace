@@ -60,6 +60,7 @@ function build() {
     wv.dataset.key = s.key;
     wv.setAttribute('partition', 'persist:esms');
     wv.setAttribute('allowpopups', 'true');
+    try { if (window.esms && window.esms.webviewPreload) wv.setAttribute('preload', window.esms.webviewPreload); } catch (_) {}
     wv.setAttribute('src', s.url);
     pane.appendChild(wv);
     stage.appendChild(pane);
@@ -120,6 +121,39 @@ try {
     else if (s.state === 'downloading') { title.textContent = 'Downloading update'; sub.textContent = `${s.percent || 0}%`; action.classList.add('hidden'); }
     else if (s.state === 'ready') { title.textContent = 'Update ready'; sub.textContent = 'Restart to apply.'; action.classList.remove('hidden'); rail.classList.add('on'); }
   });
+} catch (_) {}
+
+// Platform class (macOS gets extra top padding for the traffic lights).
+try { document.body.dataset.platform = (window.esms && window.esms.platform) || ''; } catch (_) {}
+
+// Settings / account menu on the rail.
+try {
+  const gear = $('#railSettings'), menu = $('#settingsMenu');
+  const closeMenu = () => menu.classList.add('hidden');
+  gear.onclick = (e) => {
+    e.stopPropagation();
+    menu.classList.toggle('hidden');
+    if (!menu.classList.contains('hidden')) {
+      window.esms.savedLoginCount().then((n) => {
+        const el = $('#savedCount'); if (el) el.textContent = n ? `${n} saved` : 'none saved';
+      }).catch(() => {});
+    }
+  };
+  menu.onclick = (e) => e.stopPropagation();
+  document.addEventListener('click', closeMenu);
+
+  $('#miReloadAll').onclick = () => { Object.values(panes).forEach((p) => { try { p.wv.reload(); } catch (_) {} }); closeMenu(); };
+  $('#miUpdates').onclick = () => { try { window.esms.checkForUpdates(); } catch (_) {} closeMenu(); };
+  $('#miClearLogins').onclick = () => {
+    try { window.esms.clearSavedLogins(); } catch (_) {}
+    const el = $('#savedCount'); if (el) el.textContent = 'none saved';
+    closeMenu();
+  };
+  $('#miSignOut').onclick = async () => {
+    closeMenu();
+    try { await window.esms.signOut(); } catch (_) {}
+    Object.values(panes).forEach((p) => { try { p.wv.reload(); } catch (_) {} });
+  };
 } catch (_) {}
 
 build();
