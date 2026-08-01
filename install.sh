@@ -65,4 +65,4 @@ xattr -cr "$DEST/$APP_NAME" >/dev/null 2>&1 || true
 ok "Installed to $DEST/$APP_NAME"
 step "Launching…"
 open "$DEST/$APP_NAME" || true
-printf '\n\033[32m  All set — eSMS Workspace is ready.\033[0m\n\n'
+printf '\n\033[32m  All set - eSMS Workspace is ready.\033[0m\n\n'

@@ -4,7 +4,7 @@
  * Runs inside every service <webview>. Its only job is a first-party
  * password vault for eSMS login pages: when you sign in it offers to
  * remember the password (encrypted by the OS keychain via the main
- * process), and next time it fills the form for you — the same thing
+ * process), and next time it fills the form for you - the same thing
  * Apple Passwords does in Safari, but working the same way on macOS,
  * Windows and Linux. It never touches non-eSMS pages.
  */
@@ -104,7 +104,7 @@ if (IS_ESMS) {
       if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('input')) setTimeout(maybeSave, 0);
     }, true);
 
-    // Login forms often render after first paint (SPA) — watch briefly.
+    // Login forms often render after first paint (SPA) - watch briefly.
     const obs = new MutationObserver(() => { if (!filled && findFields()) tryFill(); });
     try { obs.observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
     setTimeout(() => { try { obs.disconnect(); } catch (_) {} }, 15000);
