@@ -1,6 +1,6 @@
 {
   "name": "esms-workspace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "eSMS Workspace — the eSMS suite (Email, SMS, SMPP, admin) in a native desktop window.",
   "author": "eSMS Africa (Eira Digital Co. Limited)",
   "license": "UNLICENSED",
@@ -22,18 +22,44 @@
   "build": {
     "appId": "io.esmsafrica.workspace",
     "productName": "eSMS Workspace",
-    "publish": [{ "provider": "github", "owner": "eSMS-Africa", "repo": "esms-workspace", "releaseType": "release" }],
-    "files": ["main.js", "preload.js", "renderer/**", "package.json"],
-    "directories": { "buildResources": "build" },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "eSMS-Africa",
+        "repo": "esms-workspace",
+        "releaseType": "release"
+      }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
     "mac": {
-      "target": [{ "target": "dmg", "arch": "universal" }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": "universal"
+        }
+      ],
       "category": "public.app-category.productivity",
       "icon": "build/icon.png",
       "artifactName": "eSMS-Workspace-mac-universal.${ext}"
     },
-    "dmg": { "artifactName": "eSMS-Workspace-mac-universal.${ext}" },
+    "dmg": {
+      "artifactName": "eSMS-Workspace-mac-universal.${ext}"
+    },
     "win": {
-      "target": [{ "target": "nsis", "arch": "x64" }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        }
+      ],
       "icon": "build/icon.png",
       "artifactName": "eSMS-Workspace-win-x64.${ext}"
     },
@@ -44,13 +70,20 @@
       "artifactName": "eSMS-Workspace-win-x64.${ext}"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Network",
       "icon": "build/icon.png",
       "maintainer": "eSMS Africa <ops@esmsafrica.io>",
       "synopsis": "eSMS suite in a native window"
     },
-    "appImage": { "artifactName": "eSMS-Workspace-x86_64.${ext}" },
-    "deb": { "artifactName": "eSMS-Workspace-amd64.${ext}" }
+    "appImage": {
+      "artifactName": "eSMS-Workspace-x86_64.${ext}"
+    },
+    "deb": {
+      "artifactName": "eSMS-Workspace-amd64.${ext}"
+    }
   }
 }

@@ -7,12 +7,37 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="rail">
-    <img id="logo" src="https://auth.esmsafrica.io/logo.png" alt="eSMS" />
-    <nav id="nav"></nav>
-    <div class="spacer"></div>
+  <!-- Splash -->
+  <div id="splash">
+    <div class="splash-inner">
+      <img class="splash-logo" src="https://auth.esmsafrica.io/logo.png" alt="eSMS" />
+      <div class="splash-name">eSMS <span>Workspace</span></div>
+      <div class="splash-spin"><span></span></div>
+      <div class="splash-tag">Loading your workspace…</div>
+    </div>
+    <div class="splash-foot">Email · SMS · SMPP · Admin</div>
   </div>
-  <main id="stage"></main>
+
+  <!-- Shell -->
+  <div id="shell">
+    <aside id="rail">
+      <img id="logo" src="https://auth.esmsafrica.io/logo.png" alt="eSMS" />
+      <nav id="nav"></nav>
+      <div class="spacer"></div>
+      <button id="railUpdate" class="rail-update" title="Update ready — restart">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+      </button>
+    </aside>
+    <main id="stage"></main>
+  </div>
+
+  <!-- Update toast -->
+  <div id="updatebar" class="hidden">
+    <div class="ub-dot"></div>
+    <div class="ub-text"><strong id="ub-title">Update available</strong><span id="ub-sub"></span></div>
+    <button id="ub-action" class="hidden">Restart</button>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

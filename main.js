@@ -32,6 +32,15 @@ if (!app.requestSingleInstanceLock()) {
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
     win.once('ready-to-show', () => win.show());
     win.on('closed', () => { win = null; });
+
+    // If the shell's own renderer ever dies, reload it rather than leaving a
+    // white window. (Service webviews recover themselves in the renderer.)
+    win.webContents.on('render-process-gone', (_e, details) => {
+      if (details.reason !== 'clean-exit' && win && !win.isDestroyed()) {
+        setTimeout(() => { try { win.reload(); } catch (_) {} }, 400);
+      }
+    });
+    win.webContents.on('unresponsive', () => { try { win.webContents.forcefullyCrashRenderer(); } catch (_) {} });
   }
 
   // ── IPC from the renderer ──
@@ -74,12 +83,21 @@ if (!app.requestSingleInstanceLock()) {
     return nativeImage.createFromDataURL('data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64'));
   }
 
+  function toRenderer(channel, payload) {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  }
+
   app.whenReady().then(() => {
     Menu.setApplicationMenu(buildMenu());
     createWindow();
 
-    // Background auto-updates (from GitHub Releases via electron-updater).
+    // ── Background auto-updates (GitHub Releases via electron-updater) ──
     autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on('update-available', (i) => toRenderer('update-status', { state: 'available', version: i && i.version }));
+    autoUpdater.on('download-progress', (p) => toRenderer('update-status', { state: 'downloading', percent: Math.round(p.percent || 0) }));
+    autoUpdater.on('update-downloaded', (i) => toRenderer('update-status', { state: 'ready', version: i && i.version }));
+    autoUpdater.on('error', () => toRenderer('update-status', { state: 'idle' }));
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
 
@@ -87,6 +105,14 @@ if (!app.requestSingleInstanceLock()) {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
+
+  // Restart to apply a downloaded update.
+  ipcMain.on('restart-to-update', () => {
+    try { autoUpdater.quitAndInstall(); } catch (_) {}
+  });
+
+  // ── Never stay crashed: recover the shell if its renderer dies ──
+  ipcMain.on('shell-recover', () => { if (win && !win.isDestroyed()) win.reload(); });
 
   app.on('second-instance', () => {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
