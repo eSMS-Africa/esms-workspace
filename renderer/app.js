@@ -1,9 +1,9 @@
 'use strict';
 
-// Each service is a persistent <webview> sharing one session (persist:esms) —
+// Each service is a persistent <webview> sharing one session (persist:esms) -
 // sign in once, switch freely. Panes hold the webview + loading/error overlays.
 const SERVICES = [
-  { key: 'email', label: 'Email', url: 'https://send.esmsafrica.io',
+  { key: 'email', label: 'Email', url: 'https://send.esmsafrica.io/dashboard',
     icon: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/>' },
   { key: 'sms', label: 'SMS', url: 'https://sms.esmsafrica.io',
     icon: '<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>' },
@@ -11,6 +11,8 @@ const SERVICES = [
     icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
   { key: 'admin', label: 'Admin', url: 'https://auth.esmsafrica.io/admin',
     icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>' },
+  { key: 'help', label: 'Help', url: 'https://esmsafrica.io/help', bottom: true,
+    icon: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>' },
 ];
 
 const $ = (s) => document.querySelector(s);
@@ -42,9 +44,12 @@ function build() {
   SERVICES.forEach((s) => {
     const btn = document.createElement('button');
     btn.className = 'svc'; btn.dataset.key = s.key;
+    if (s.bottom) btn.classList.add('svc-bottom');
     btn.innerHTML = `${svg(s.icon)}<span class="dot" data-dot="${s.key}"></span><span class="label">${s.label}</span>`;
     btn.onclick = () => show(s.key);
-    nav.appendChild(btn);
+    // Utility tabs (Help) sit at the foot of the rail, next to Settings.
+    if (s.bottom) { const anchor = $('#railUpdate'); anchor.parentNode.insertBefore(btn, anchor); }
+    else nav.appendChild(btn);
 
     const pane = document.createElement('div');
     pane.className = 'pane'; pane.dataset.key = s.key;
@@ -117,7 +122,7 @@ try {
   window.esms.onUpdateStatus((s) => {
     if (!s || s.state === 'idle') { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
-    if (s.state === 'available') { title.textContent = 'Update available'; sub.textContent = `Version ${s.version || ''} — downloading…`; action.classList.add('hidden'); }
+    if (s.state === 'available') { title.textContent = 'Update available'; sub.textContent = `Version ${s.version || ''} - downloading…`; action.classList.add('hidden'); }
     else if (s.state === 'downloading') { title.textContent = 'Downloading update'; sub.textContent = `${s.percent || 0}%`; action.classList.add('hidden'); }
     else if (s.state === 'ready') { title.textContent = 'Update ready'; sub.textContent = 'Restart to apply.'; action.classList.remove('hidden'); rail.classList.add('on'); }
   });

@@ -7,7 +7,7 @@ const { autoUpdater } = require('electron-updater');
 
 const isMac = process.platform === 'darwin';
 
-// Single instance — focus the existing window instead of opening a second.
+// Single instance - focus the existing window instead of opening a second.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -126,6 +126,15 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   app.whenReady().then(() => {
+    // Let the eSMS web apps show desktop notifications (new email, etc.) and
+    // use the clipboard, without a permission prompt. Everything else is denied.
+    try {
+      const ses = session.fromPartition('persist:esms');
+      const ALLOW = new Set(['notifications', 'clipboard-read', 'clipboard-sanitized-write']);
+      ses.setPermissionRequestHandler((_wc, permission, cb) => cb(ALLOW.has(permission)));
+      ses.setPermissionCheckHandler((_wc, permission) => ALLOW.has(permission));
+    } catch (_) {}
+
     Menu.setApplicationMenu(buildMenu());
     createWindow();
 

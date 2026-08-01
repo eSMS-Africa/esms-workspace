@@ -1,4 +1,4 @@
-/* eSMS Workspace — warm brand (matches esmsafrica.io) */
+/* eSMS Workspace - warm brand (matches esmsafrica.io) */
 :root {
   --accent: #ff6a1a; --accent-2: #ff8a3d; --accent-ink: #c2410c; --accent-soft: #ffe9d6;
   --ink: #1f1b17; --ink-2: #3a332c; --muted: #7a7269;
@@ -51,8 +51,10 @@ body[data-platform="darwin"] #rail { padding-top: 44px; }
   width: 60px; padding: 8px 0 7px; border-radius: 14px; border: 0; cursor: pointer;
   background: transparent; color: rgba(255,255,255,.55); position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
-  transition: background .18s, color .18s, transform .08s;
+  transition: background .18s, color .18s, transform .08s; -webkit-app-region: no-drag;
 }
+.svc-bottom { margin-top: 4px; position: relative; }
+.svc-bottom::after { content: ""; position: absolute; top: -6px; left: 14px; right: 14px; height: 1px; background: var(--rail-line); }
 .svc:hover { background: rgba(255,255,255,.07); color: #fff; }
 .svc:active { transform: scale(.95); }
 .svc.active { background: rgba(255,106,26,.15); color: var(--accent-2); }
