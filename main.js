@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, safeStorage, session } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, safeStorage, session, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -147,6 +147,25 @@ if (!app.requestSingleInstanceLock()) {
 
     Menu.setApplicationMenu(buildMenu());
     createWindow();
+
+    // ── Workspace usage ping ──
+    // The web panes talk to their own backends, so central auth rarely sees a
+    // request from the app. We make ONE authenticated call to auth's /auth/me
+    // using the shared session (cookies + the eSMSWorkspace user-agent) so a
+    // signed-in user is reliably recorded as a Workspace user — on launch and
+    // every 6h. It's harmless when not signed in (401, no-op).
+    const pingUsage = () => {
+      try {
+        const ses = session.fromPartition('persist:esms');
+        const req = net.request({ method: 'GET', url: 'https://auth.esmsafrica.io/auth/me', session: ses, useSessionCookies: true });
+        req.setHeader('User-Agent', `${app.userAgentFallback}`);
+        req.on('response', (r) => { r.on('data', () => {}); r.on('end', () => {}); });
+        req.on('error', () => {});
+        req.end();
+      } catch (_) {}
+    };
+    setTimeout(pingUsage, 20000);                        // after the user is likely signed in
+    setInterval(pingUsage, 6 * 60 * 60 * 1000);
 
     // ── Background auto-updates (GitHub Releases via electron-updater) ──
     autoUpdater.autoDownload = true;
