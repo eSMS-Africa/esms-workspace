@@ -9,11 +9,11 @@ const SERVICES = [
     icon: '<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>' },
   { key: 'smpp', label: 'SMPP', url: 'https://smpp.esmsafrica.io',
     icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
-  { key: 'admin', label: 'Admin', url: 'https://auth.esmsafrica.io/admin',
+  { key: 'admin', label: 'Admin', url: 'https://auth.esmsafrica.io/admin', gated: 'admin',
     icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>' },
   { key: 'links', label: 'eSMS Links', url: 'https://links.esmsafrica.io',
     icon: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' },
-  { key: 'support', label: 'Support', url: 'https://auth.esmsafrica.io/support',
+  { key: 'support', label: 'Support', url: 'https://auth.esmsafrica.io/support', gated: 'support',
     icon: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>' },
   { key: 'help', label: 'Help', url: 'https://esmsafrica.io/help', bottom: true,
     icon: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>' },
@@ -23,6 +23,11 @@ const $ = (s) => document.querySelector(s);
 const nav = $('#nav'), stage = $('#stage'), splash = $('#splash');
 const unread = {}, panes = {};
 let active = null, firstReady = false;
+// Role gating: sensitive panes stay hidden until central auth confirms the
+// signed-in user's roles (see main.js refreshIdentity). Secure default: hidden.
+const svcByKey = Object.fromEntries(SERVICES.map((s) => [s.key, s]));
+let entitled = { admin: false, support: false };
+const canSee = (s) => !s.gated || !!entitled[s.gated];
 
 const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 
@@ -51,6 +56,7 @@ function build() {
     if (s.bottom) btn.classList.add('svc-bottom');
     btn.innerHTML = `${svg(s.icon)}<span class="dot" data-dot="${s.key}"></span><span class="label">${s.label}</span>`;
     btn.onclick = () => show(s.key);
+    if (s.gated) btn.style.display = canSee(s) ? '' : 'none';   // hidden until entitled
     // Utility tabs (Help) sit at the foot of the rail, next to Settings.
     if (s.bottom) { const anchor = $('#railUpdate'); anchor.parentNode.insertBefore(btn, anchor); }
     else nav.appendChild(btn);
@@ -70,7 +76,9 @@ function build() {
     wv.setAttribute('partition', 'persist:esms');
     wv.setAttribute('allowpopups', 'true');
     try { if (window.esms && window.esms.webviewPreload) wv.setAttribute('preload', window.esms.webviewPreload); } catch (_) {}
-    wv.setAttribute('src', s.url);
+    // Gated panes don't load their URL until the user is entitled AND opens them,
+    // so a non-admin never even requests /admin.
+    if (s.gated) wv.dataset.lazy = s.url; else wv.setAttribute('src', s.url);
     pane.appendChild(wv);
     stage.appendChild(pane);
 
@@ -107,10 +115,34 @@ function build() {
 }
 
 function show(key) {
+  const s = svcByKey[key];
+  // Refuse to open a gated pane the user isn't entitled to (covers nav + menu).
+  if (s && s.gated && !canSee(s)) return;
+  const p = panes[key];
+  if (p && p.wv.dataset.lazy) {
+    const cur = p.wv.getAttribute('src');
+    if (!cur || cur === 'about:blank') p.wv.setAttribute('src', p.wv.dataset.lazy);  // lazy-load on first authorised open
+  }
   active = key;
   document.querySelectorAll('.svc').forEach((b) => b.classList.toggle('active', b.dataset.key === key));
-  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('active', p.dataset.key === key));
+  document.querySelectorAll('.pane').forEach((pn) => pn.classList.toggle('active', pn.dataset.key === key));
 }
+
+function applyEntitlements(ent) {
+  entitled = { admin: !!(ent && ent.admin), support: !!(ent && ent.support) };
+  SERVICES.filter((s) => s.gated).forEach((s) => {
+    const btn = document.querySelector(`.svc[data-key="${s.key}"]`);
+    if (btn) btn.style.display = canSee(s) ? '' : 'none';
+    // If the user is viewing a pane they just lost access to, bounce them out
+    // and unload it so no privileged content lingers.
+    if (!canSee(s)) {
+      const p = panes[s.key];
+      if (p) { try { p.wv.setAttribute('src', 'about:blank'); } catch (_) {} }
+      if (active === s.key) show('email');
+    }
+  });
+}
+try { window.esms.onEntitlements(applyEntitlements); } catch (_) {}
 
 // Menu / shortcuts
 try {

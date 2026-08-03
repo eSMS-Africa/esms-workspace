@@ -154,18 +154,47 @@ if (!app.requestSingleInstanceLock()) {
     // using the shared session (cookies + the eSMSWorkspace user-agent) so a
     // signed-in user is reliably recorded as a Workspace user — on launch and
     // every 6h. It's harmless when not signed in (401, no-op).
-    const pingUsage = () => {
+    // Role gating: which sensitive panes (Admin/Support) the signed-in user may
+    // see. We keep it in lockstep with the web guards (esms-auth dependencies +
+    // esms-auth-ui services.ts). Secure default is nothing until auth confirms.
+    const entitlementsFor = (roles) => {
+      roles = roles || {};
+      const support = roles.support === 'agent' || roles.support === 'admin';
+      const platformAdmin = roles.global === 'super_admin'
+        || Object.entries(roles).some(([k, v]) => k !== 'support' && v === 'admin');
+      return { admin: platformAdmin, support: support || platformAdmin };
+    };
+    let lastEnt = '';
+    const pushEntitlements = (ent) => {
+      const s = JSON.stringify(ent);
+      if (s === lastEnt) return;
+      lastEnt = s;
+      toRenderer('entitlements', ent);
+    };
+
+    // ONE authenticated call to auth's /auth/me (shared session) — records the
+    // Workspace user AND tells us their roles so we can gate panes.
+    const refreshIdentity = () => {
       try {
         const ses = session.fromPartition('persist:esms');
         const req = net.request({ method: 'GET', url: 'https://auth.esmsafrica.io/auth/me', session: ses, useSessionCookies: true });
         req.setHeader('User-Agent', `${app.userAgentFallback}`);
-        req.on('response', (r) => { r.on('data', () => {}); r.on('end', () => {}); });
+        req.on('response', (r) => {
+          let buf = '';
+          r.on('data', (c) => { buf += c; });
+          r.on('end', () => {
+            if (r.statusCode !== 200) { pushEntitlements({ admin: false, support: false }); return; }
+            try { pushEntitlements(entitlementsFor(JSON.parse(buf).app_roles)); }
+            catch (_) { pushEntitlements({ admin: false, support: false }); }
+          });
+        });
         req.on('error', () => {});
         req.end();
       } catch (_) {}
     };
-    setTimeout(pingUsage, 20000);                        // after the user is likely signed in
-    setInterval(pingUsage, 6 * 60 * 60 * 1000);
+    setTimeout(refreshIdentity, 8000);                   // shortly after launch
+    setInterval(refreshIdentity, 60 * 1000);             // pick up sign-in / role changes
+    win.on('focus', refreshIdentity);
 
     // ── Background auto-updates (GitHub Releases via electron-updater) ──
     autoUpdater.autoDownload = true;
