@@ -222,6 +222,7 @@ if (!app.requestSingleInstanceLock()) {
       { label: 'SMPP', key: 'smpp', accel: 'CmdOrCtrl+3' },
       { label: 'Admin', key: 'admin', accel: 'CmdOrCtrl+4' },
       { label: 'eSMS Links', key: 'links', accel: 'CmdOrCtrl+5' },
+      { label: 'Support', key: 'support', accel: 'CmdOrCtrl+6' },
     ];
     const template = [
       ...(isMac ? [{ role: 'appMenu' }] : []),
