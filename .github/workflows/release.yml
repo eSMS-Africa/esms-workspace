@@ -36,3 +36,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+  # Publish SHA256SUMS.txt so users (esp. on Windows, where the unsigned .exe
+  # triggers SmartScreen) can verify the installer they downloaded is genuine.
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checksum the published installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir dl && cd dl
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'eSMS-Workspace-*' || true
+          if ls eSMS-Workspace-* >/dev/null 2>&1; then
+            sha256sum eSMS-Workspace-* > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+            gh release upload "$TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "No installer assets found to checksum"
+          fi
