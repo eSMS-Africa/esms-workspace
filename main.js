@@ -152,7 +152,7 @@ if (!app.requestSingleInstanceLock()) {
     // The web panes talk to their own backends, so central auth rarely sees a
     // request from the app. We make ONE authenticated call to auth's /auth/me
     // using the shared session (cookies + the eSMSWorkspace user-agent) so a
-    // signed-in user is reliably recorded as a Workspace user — on launch and
+    // signed-in user is reliably recorded as a Workspace user - on launch and
     // every 6h. It's harmless when not signed in (401, no-op).
     // Role gating: which sensitive panes (Admin/Support) the signed-in user may
     // see. We keep it in lockstep with the web guards (esms-auth dependencies +
@@ -172,7 +172,7 @@ if (!app.requestSingleInstanceLock()) {
       toRenderer('entitlements', ent);
     };
 
-    // ONE authenticated call to auth's /auth/me (shared session) — records the
+    // ONE authenticated call to auth's /auth/me (shared session) - records the
     // Workspace user AND tells us their roles so we can gate panes.
     const refreshIdentity = () => {
       try {

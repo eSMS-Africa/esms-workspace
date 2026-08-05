@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('esms', {
   onSwitchService: (cb) => ipcRenderer.on('switch-service', (_e, key) => cb(key)),
   onReloadService: (cb) => ipcRenderer.on('reload-service', () => cb()),
 
-  // Role entitlements — which gated panes (admin/support) this signed-in user
+  // Role entitlements - which gated panes (admin/support) this signed-in user
   // may see. Secure default is none until central auth confirms the roles.
   onEntitlements: (cb) => ipcRenderer.on('entitlements', (_e, ent) => cb(ent)),
 
