@@ -15,7 +15,7 @@ const SERVICES = [
     icon: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' },
   { key: 'support', label: 'Support', url: 'https://auth.esmsafrica.io/support',
     icon: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>' },
-  { key: 'help', label: 'Help', url: 'https://docs.esmsafrica.io/docs', bottom: true,
+  { key: 'help', label: 'Help', url: 'https://esmsafrica.io/help', bottom: true,
     icon: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>' },
 ];
 
