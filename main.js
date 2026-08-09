@@ -12,11 +12,54 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   let win = null;
+  let deepLinkQueue = [];
+  const PANES = ['email', 'sms', 'smpp', 'admin', 'links', 'support', 'help'];
+
+  // ── Deep links: esmsworkspace://email, esmsworkspace://sms/compose, etc. ──
+  const PROTOCOL = 'esmsworkspace';
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+  function routeDeepLink(url) {
+    try {
+      if (!url || url.indexOf(`${PROTOCOL}://`) !== 0) return;
+      const key = url.slice(`${PROTOCOL}://`.length).split(/[/?#]/)[0].toLowerCase();
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.show(); win.focus();
+        if (PANES.includes(key)) win.webContents.send('switch-service', key);
+      } else {
+        deepLinkQueue.push(key);   // window not up yet - replay on ready
+      }
+    } catch (_) { /* ignore */ }
+  }
+  // macOS delivers deep links via open-url; register before ready.
+  app.on('open-url', (e, url) => { e.preventDefault(); routeDeepLink(url); });
+
+  // ── Persisted window bounds (size + position across launches) ──
+  const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
+  function loadWindowState() {
+    try {
+      const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+      if (s && typeof s.width === 'number' && typeof s.height === 'number') return s;
+    } catch (_) {}
+    return null;
+  }
+  function saveWindowState() {
+    try {
+      if (!win || win.isDestroyed() || win.isMinimized()) return;
+      fs.writeFileSync(stateFile(), JSON.stringify(win.getBounds()), { mode: 0o600 });
+    } catch (_) {}
+  }
 
   function createWindow() {
+    const st = loadWindowState();
     win = new BrowserWindow({
-      width: 1320,
-      height: 860,
+      width: (st && st.width) || 1320,
+      height: (st && st.height) || 860,
+      ...(st && typeof st.x === 'number' && typeof st.y === 'number' ? { x: st.x, y: st.y } : {}),
       minWidth: 940,
       minHeight: 600,
       title: 'eSMS Workspace',
@@ -37,7 +80,15 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-    win.once('ready-to-show', () => win.show());
+    win.once('ready-to-show', () => {
+      win.show();
+      // Replay a deep link that arrived before the window was ready.
+      if (deepLinkQueue.length) {
+        const key = deepLinkQueue.pop(); deepLinkQueue = [];
+        if (PANES.includes(key)) win.webContents.send('switch-service', key);
+      }
+    });
+    win.on('close', saveWindowState);
     win.on('closed', () => { win = null; });
 
     // If the shell's own renderer ever dies, reload it rather than leaving a
@@ -148,6 +199,10 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(buildMenu());
     createWindow();
 
+    // Cold-launch deep link (Windows/Linux pass it in argv).
+    const launchLink = process.argv.find((a) => typeof a === 'string' && a.indexOf(`${PROTOCOL}://`) === 0);
+    if (launchLink) routeDeepLink(launchLink);
+
     // ── Workspace usage ping ──
     // The web panes talk to their own backends, so central auth rarely sees a
     // request from the app. We make ONE authenticated call to auth's /auth/me
@@ -231,8 +286,11 @@ if (!app.requestSingleInstanceLock()) {
   // ── Never stay crashed: recover the shell if its renderer dies ──
   ipcMain.on('shell-recover', () => { if (win && !win.isDestroyed()) win.reload(); });
 
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+    // Windows/Linux deliver the deep link as an argv entry on the 2nd instance.
+    const link = argv.find((a) => typeof a === 'string' && a.indexOf(`${PROTOCOL}://`) === 0);
+    if (link) routeDeepLink(link);
   });
 
   app.on('window-all-closed', () => {

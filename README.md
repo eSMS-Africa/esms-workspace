@@ -8,10 +8,15 @@ Download page: <https://esmsafrica.io/workspace>
 
 ## What it does
 
-- **One window, four services.** A left rail switches between Email
-  (`send.esmsafrica.io`), SMS (`sms.esmsafrica.io`), SMPP (`smpp.esmsafrica.io`)
-  and Admin (`auth.esmsafrica.io/admin`). Each is a persistent view sharing one
+- **One window, six services.** A left rail switches between Email
+  (`send.esmsafrica.io`), SMS (`sms.esmsafrica.io`), SMPP (`smpp.esmsafrica.io`),
+  Links (`links.esmsafrica.io`), Support (`auth.esmsafrica.io/support`) and Admin
+  (`auth.esmsafrica.io/admin`), plus Help. Each is a persistent view sharing one
   session, so you **sign in once** (central auth) and switch freely.
+- **Deep links.** `esmsworkspace://email`, `esmsworkspace://sms`, etc. focus the
+  app and jump straight to that service (handy for notifications and a future
+  companion mobile app).
+- **Remembers its place.** Window size and position persist across launches.
 - **System notifications** - the web apps' notifications become native ones.
 - **Unread badge** - dock/taskbar badge aggregated across services (from each
   page's title, e.g. a leading `(3)`).
