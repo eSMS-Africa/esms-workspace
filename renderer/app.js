@@ -156,11 +156,13 @@ try {
   const restart = () => window.esms.restartToUpdate();
   action.onclick = restart; rail.onclick = restart;
   window.esms.onUpdateStatus((s) => {
-    if (!s || s.state === 'idle') { bar.classList.add('hidden'); return; }
+    // Routine background checks stay silent - only surface real activity.
+    if (!s || s.state === 'idle' || s.state === 'checking') { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
     if (s.state === 'available') { title.textContent = 'Update available'; sub.textContent = `Version ${s.version || ''} - downloading…`; action.classList.add('hidden'); }
     else if (s.state === 'downloading') { title.textContent = 'Downloading update'; sub.textContent = `${s.percent || 0}%`; action.classList.add('hidden'); }
-    else if (s.state === 'ready') { title.textContent = 'Update ready'; sub.textContent = 'Restart to apply.'; action.classList.remove('hidden'); rail.classList.add('on'); }
+    else if (s.state === 'ready') { title.textContent = 'Update ready'; sub.textContent = 'Restarting to apply…'; action.classList.remove('hidden'); rail.classList.add('on'); }
+    else if (s.state === 'restarting') { title.textContent = 'Updating'; sub.textContent = `Restarting into v${s.version || 'the new version'}…`; action.classList.remove('hidden'); rail.classList.add('on'); }
   });
 } catch (_) {}
 

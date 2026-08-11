@@ -251,15 +251,33 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(refreshIdentity, 60 * 1000);             // pick up sign-in / role changes
     win.on('focus', refreshIdentity);
 
-    // ── Background auto-updates (GitHub Releases via electron-updater) ──
+    // ── Auto-updates (GitHub Releases via electron-updater) ──
+    // Always check, auto-download, and auto-restart into the new version - no
+    // user action needed. autoInstallOnAppQuit stays on as a safety net.
+    let updateApplying = false;
+    let lastUpdateCheck = 0;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on('checking-for-update', () => toRenderer('update-status', { state: 'checking' }));
     autoUpdater.on('update-available', (i) => toRenderer('update-status', { state: 'available', version: i && i.version }));
+    autoUpdater.on('update-not-available', () => toRenderer('update-status', { state: 'idle' }));
     autoUpdater.on('download-progress', (p) => toRenderer('update-status', { state: 'downloading', percent: Math.round(p.percent || 0) }));
-    autoUpdater.on('update-downloaded', (i) => toRenderer('update-status', { state: 'ready', version: i && i.version }));
+    autoUpdater.on('update-downloaded', (i) => {
+      if (updateApplying) return;
+      updateApplying = true;
+      // Tell the window an update is in hand, give it a brief moment to show the
+      // notice, then relaunch into the new version automatically.
+      toRenderer('update-status', { state: 'restarting', version: i && i.version });
+      setTimeout(() => { try { autoUpdater.quitAndInstall(false, true); } catch (_) {} }, 8000);
+    });
     autoUpdater.on('error', () => toRenderer('update-status', { state: 'idle' }));
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+
+    const checkForUpdates = () => { lastUpdateCheck = Date.now(); autoUpdater.checkForUpdates().catch(() => {}); };
+    checkForUpdates();                                       // on launch
+    setInterval(checkForUpdates, 30 * 60 * 1000);            // every 30 minutes
+    app.on('browser-window-focus', () => {                  // and when refocused (throttled)
+      if (Date.now() - lastUpdateCheck > 10 * 60 * 1000) checkForUpdates();
+    });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -272,7 +290,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // Manual update check from the settings menu.
-  ipcMain.on('check-updates', () => { autoUpdater.checkForUpdatesAndNotify().catch(() => {}); });
+  ipcMain.on('check-updates', () => { autoUpdater.checkForUpdates().catch(() => {}); });
 
   // Sign out everywhere: wipe the shared session (cookies + storage).
   ipcMain.handle('sign-out', async () => {
