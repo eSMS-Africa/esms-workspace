@@ -10,7 +10,7 @@ Download page: <https://esmsafrica.io/workspace>
 
 - **One window, six services.** A left rail switches between Email
   (`send.esmsafrica.io`), SMS (`sms.esmsafrica.io`), SMPP (`smpp.esmsafrica.io`),
-  Links (`links.esmsafrica.io`), Support (`auth.esmsafrica.io/support`) and Admin
+  Links (`links.esmsafrica.io`), Support (`console.esmsafrica.io`) and Admin
   (`auth.esmsafrica.io/admin`), plus Help. Each is a persistent view sharing one
   session, so you **sign in once** (central auth) and switch freely.
 - **Deep links.** `esmsworkspace://email`, `esmsworkspace://sms`, etc. focus the
