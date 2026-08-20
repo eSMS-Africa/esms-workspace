@@ -256,21 +256,48 @@ if (!app.requestSingleInstanceLock()) {
     // user action needed. autoInstallOnAppQuit stays on as a safety net.
     let updateApplying = false;
     let lastUpdateCheck = 0;
+    let availableVersion = null;
+    const RELEASES_URL = 'https://github.com/eSMS-Africa/esms-workspace/releases/latest';
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+
+    // quitAndInstall silently no-ops on an UNSIGNED macOS app (Squirrel.Mac needs a
+    // valid signature), and download can error the same way. So whenever the
+    // in-place update can't be applied, fall back to opening the release download
+    // page - the update still reaches the user, just via a manual install.
+    const openDownload = () => {
+      toRenderer('update-status', { state: 'manual', version: availableVersion, url: RELEASES_URL });
+      try { shell.openExternal(RELEASES_URL); } catch (_) {}
+    };
+    // Attempt an in-place relaunch; if the app is still alive shortly after (the
+    // update could not be applied), fall back to the download page.
+    const applyOrFallback = (silent) => {
+      let quitting = false;
+      app.once('before-quit', () => { quitting = true; });
+      try { autoUpdater.quitAndInstall(false, true); } catch (_) {}
+      setTimeout(() => { if (!quitting) openDownload(); }, 4000);
+      if (!silent) return;
+    };
+
     autoUpdater.on('checking-for-update', () => toRenderer('update-status', { state: 'checking' }));
-    autoUpdater.on('update-available', (i) => toRenderer('update-status', { state: 'available', version: i && i.version }));
+    autoUpdater.on('update-available', (i) => { availableVersion = i && i.version; toRenderer('update-status', { state: 'available', version: availableVersion }); });
     autoUpdater.on('update-not-available', () => toRenderer('update-status', { state: 'idle' }));
     autoUpdater.on('download-progress', (p) => toRenderer('update-status', { state: 'downloading', percent: Math.round(p.percent || 0) }));
     autoUpdater.on('update-downloaded', (i) => {
       if (updateApplying) return;
       updateApplying = true;
+      availableVersion = (i && i.version) || availableVersion;
       // Tell the window an update is in hand, give it a brief moment to show the
-      // notice, then relaunch into the new version automatically.
-      toRenderer('update-status', { state: 'restarting', version: i && i.version });
-      setTimeout(() => { try { autoUpdater.quitAndInstall(false, true); } catch (_) {} }, 8000);
+      // notice, then relaunch into the new version (or fall back to a download).
+      toRenderer('update-status', { state: 'restarting', version: availableVersion });
+      setTimeout(() => applyOrFallback(true), 6000);
     });
-    autoUpdater.on('error', () => toRenderer('update-status', { state: 'idle' }));
+    autoUpdater.on('error', () => {
+      // An error after an update was found (typical for an unsigned mac build):
+      // offer the manual download instead of silently going idle.
+      if (availableVersion) openDownload();
+      else toRenderer('update-status', { state: 'idle' });
+    });
 
     const checkForUpdates = () => { lastUpdateCheck = Date.now(); autoUpdater.checkForUpdates().catch(() => {}); };
     checkForUpdates();                                       // on launch
@@ -284,9 +311,18 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  // Restart to apply a downloaded update.
+  // Restart to apply a downloaded update. If the in-place install can't run
+  // (unsigned macOS), fall back to opening the release download page.
   ipcMain.on('restart-to-update', () => {
-    try { autoUpdater.quitAndInstall(); } catch (_) {}
+    let quitting = false;
+    app.once('before-quit', () => { quitting = true; });
+    try { autoUpdater.quitAndInstall(false, true); } catch (_) {}
+    setTimeout(() => {
+      if (quitting) return;
+      const url = 'https://github.com/eSMS-Africa/esms-workspace/releases/latest';
+      toRenderer('update-status', { state: 'manual', url });
+      try { shell.openExternal(url); } catch (_) {}
+    }, 4000);
   });
 
   // Manual update check from the settings menu.

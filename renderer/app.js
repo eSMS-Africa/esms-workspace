@@ -161,8 +161,9 @@ try {
     bar.classList.remove('hidden');
     if (s.state === 'available') { title.textContent = 'Update available'; sub.textContent = `Version ${s.version || ''} - downloading…`; action.classList.add('hidden'); }
     else if (s.state === 'downloading') { title.textContent = 'Downloading update'; sub.textContent = `${s.percent || 0}%`; action.classList.add('hidden'); }
-    else if (s.state === 'ready') { title.textContent = 'Update ready'; sub.textContent = 'Restarting to apply…'; action.classList.remove('hidden'); rail.classList.add('on'); }
-    else if (s.state === 'restarting') { title.textContent = 'Updating'; sub.textContent = `Restarting into v${s.version || 'the new version'}…`; action.classList.remove('hidden'); rail.classList.add('on'); }
+    else if (s.state === 'ready') { title.textContent = 'Update ready'; sub.textContent = 'Restarting to apply…'; action.textContent = 'Restart'; action.classList.remove('hidden'); rail.classList.add('on'); }
+    else if (s.state === 'restarting') { title.textContent = 'Updating'; sub.textContent = `Restarting into v${s.version || 'the new version'}…`; action.textContent = 'Restart'; action.classList.remove('hidden'); rail.classList.add('on'); }
+    else if (s.state === 'manual') { title.textContent = 'Update ready'; sub.textContent = `Download v${s.version || 'the latest version'} to finish installing`; action.textContent = 'Download'; action.classList.remove('hidden'); rail.classList.add('on'); }
   });
 } catch (_) {}
 
