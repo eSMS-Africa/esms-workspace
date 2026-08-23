@@ -122,6 +122,21 @@ if (!app.requestSingleInstanceLock()) {
   const isInternal = (url) => {
     try { return /(^|\.)esmsafrica\.io$/.test(new URL(url).hostname); } catch (_) { return false; }
   };
+  // Trusted third-party auth/payment hosts that MUST complete INSIDE the app's
+  // shared session (persist:esms). Without this, Google/GitHub OAuth and Paystack
+  // checkout get ejected to the system browser and lose the session, so sign-in
+  // and card top-ups can never finish in the app.
+  const isTrustedAuth = (url) => {
+    try {
+      const h = new URL(url).hostname;
+      return (
+        h === 'accounts.google.com' ||
+        h === 'github.com' || h === 'api.github.com' ||
+        /(^|\.)paystack\.(com|co)$/.test(h)
+      );
+    } catch (_) { return false; }
+  };
+  const isAllowedInApp = (url) => isInternal(url) || isTrustedAuth(url);
 
   // ── First-party password vault ──
   // Logins are saved encrypted by the OS keychain (macOS Keychain / Windows
@@ -155,11 +170,24 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('vault-clear', () => { writeVault({}); toRenderer('vault-changed', 0); });
   app.on('web-contents-created', (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
-      if (!isInternal(url)) { shell.openExternal(url); return { action: 'deny' }; }
-      return { action: 'allow' };
+      if (isAllowedInApp(url)) {
+        // Open in a child window that shares the login session so OAuth / Paystack
+        // popups complete against the same cookies as the app.
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 480, height: 720, autoHideMenuBar: true,
+            webPreferences: { partition: 'persist:esms', contextIsolation: true, nodeIntegration: false, sandbox: false },
+          },
+        };
+      }
+      shell.openExternal(url);
+      return { action: 'deny' };
     });
     contents.on('will-navigate', (ev, url) => {
-      if (contents.getType() === 'webview' && !isInternal(url)) {
+      // Keep eSMS and trusted auth/payment hosts inside the webview session; push
+      // everything else out to the system browser.
+      if (contents.getType() === 'webview' && !isAllowedInApp(url)) {
         ev.preventDefault();
         shell.openExternal(url);
       }
@@ -382,7 +410,20 @@ if (!app.requestSingleInstanceLock()) {
         ],
       },
       { role: 'editMenu' },
-      { role: 'viewMenu' },
+      {
+        // Custom View menu WITHOUT the default Reload/Force-Reload: those also bind
+        // CmdOrCtrl+R and would reload the whole shell (tearing down every pane),
+        // clashing with Workspace -> "Reload service". Keep zoom/fullscreen/devtools.
+        label: 'View',
+        submenu: [
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+          { role: 'toggleDevTools' },
+        ],
+      },
       { role: 'windowMenu' },
     ];
     return Menu.buildFromTemplate(template);
