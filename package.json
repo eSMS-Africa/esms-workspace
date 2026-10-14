@@ -1,12 +1,13 @@
 {
   "name": "esms-workspace",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "eSMS Workspace - the eSMS suite (Email, SMS, SMPP, admin) in a native desktop window.",
   "author": "eSMS Africa (Eira Digital Co. Limited)",
   "license": "UNLICENSED",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --check main.js && node --check preload.js && node --check webview-preload.js && node --check renderer/app.js && node test/main.test.cjs",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",

@@ -126,6 +126,18 @@ hosts. The only env vars are CI/build secrets consumed by the Release workflow:
 - **Rail settings menu:** reload all services, check for updates, clear saved logins, and sign
   out everywhere (wipes the shared session).
 
+## Security model
+
+- Panes and popups stay in the app only for `https://*.esmsafrica.io` plus the trusted
+  sign-in / checkout hosts (Google, GitHub, Paystack, Pesapal); anything else opens in the
+  system browser, and only `http(s)`, `mailto` and `tel` links are ever handed to the OS.
+- The saved-logins vault is keyed by the calling page's own origin, so one eSMS subdomain can
+  never read another's saved password. Shell-only IPC (badge, vault admin, sign-out, updates)
+  is accepted only from the app window.
+- Notifications and clipboard are granted to eSMS pages only.
+- `npm test` runs syntax checks plus `test/main.test.cjs`, which drives `main.js` against a
+  mocked Electron (no Electron download needed).
+
 ## Notes for the web apps
 
 - **Unread badge** reads a leading `(N)` (or `N unread`) from each service's page title. To

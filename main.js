@@ -3,6 +3,7 @@
 const { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, safeStorage, session, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
 const isMac = process.platform === 'darwin';
@@ -13,6 +14,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   let win = null;
   let deepLinkQueue = [];
+  let onShellLoaded = () => {};   // set once identity checks are wired up
   const PANES = ['email', 'sms', 'smpp', 'admin', 'links', 'support', 'help'];
 
   // ── Deep links: esmsworkspace://email, esmsworkspace://sms/compose, etc. ──
@@ -80,6 +82,7 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+    win.webContents.on('did-finish-load', () => { try { onShellLoaded(); } catch (_) {} });
     win.once('ready-to-show', () => {
       win.show();
       // Replay a deep link that arrived before the window was ready.
@@ -103,15 +106,15 @@ if (!app.requestSingleInstanceLock()) {
 
   // ── IPC from the renderer ──
   // Open non-eSMS links in the user's real browser.
-  ipcMain.on('open-external', (_e, url) => {
-    try {
-      if (/^https?:\/\//i.test(url)) shell.openExternal(url);
-    } catch (_) { /* ignore */ }
+  ipcMain.on('open-external', (e, url) => {
+    if (!fromShell(e) || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+    openExternalSafe(url);
   });
 
   // Aggregate unread badge across services (macOS/Linux dock; Windows overlay).
-  ipcMain.on('badge', (_e, count) => {
-    const n = Number(count) || 0;
+  ipcMain.on('badge', (e, count) => {
+    if (!fromShell(e)) return;
+    const n = Math.max(0, Math.min(Number(count) || 0, 9999));
     try { app.setBadgeCount(n); } catch (_) {}
     if (process.platform === 'win32' && win) {
       win.setOverlayIcon(n > 0 ? makeOverlay(n) : null, n > 0 ? `${n} unread` : '');
@@ -119,23 +122,44 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // Keep navigation inside the eSMS domains; send everything else to the browser.
+  // HTTPS only: a file:// or http:// URL that merely names an eSMS host must not
+  // count as internal.
+  const ESMS_HOST = /(^|\.)esmsafrica\.io$/i;
   const isInternal = (url) => {
-    try { return /(^|\.)esmsafrica\.io$/.test(new URL(url).hostname); } catch (_) { return false; }
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' && ESMS_HOST.test(u.hostname);
+    } catch (_) { return false; }
+  };
+  // Only hand web/mail/phone links to the OS. Any other scheme (ms-msdt:, smb:,
+  // file:, custom protocol handlers...) from page content - e.g. a link inside a
+  // received email - could launch a local program, so it is dropped.
+  const SAFE_EXTERNAL = new Set(['https:', 'http:', 'mailto:', 'tel:']);
+  const openExternalSafe = (url) => {
+    try {
+      if (SAFE_EXTERNAL.has(new URL(url).protocol)) shell.openExternal(url);
+    } catch (_) { /* ignore */ }
   };
   // Trusted third-party auth/payment hosts that MUST complete INSIDE the app's
-  // shared session (persist:esms). Without this, Google/GitHub OAuth and Paystack
+  // shared session (persist:esms). Without this, Google/GitHub OAuth and card
   // checkout get ejected to the system browser and lose the session, so sign-in
   // and card top-ups can never finish in the app.
   const isTrustedAuth = (url) => {
     try {
-      const h = new URL(url).hostname;
+      const u = new URL(url);
+      if (u.protocol !== 'https:') return false;
+      const h = u.hostname;
       return (
         h === 'accounts.google.com' ||
         h === 'github.com' || h === 'api.github.com' ||
-        /(^|\.)paystack\.(com|co)$/.test(h)
+        /(^|\.)paystack\.(com|co)$/.test(h) ||
+        // Card top-ups now go through Pesapal (pay.pesapal.com): keep checkout in
+        // the app session so the return to /topup/result is still signed in.
+        /(^|\.)pesapal\.com$/.test(h)
       );
     } catch (_) { return false; }
   };
+  const SHELL_URL = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
   const isAllowedInApp = (url) => isInternal(url) || isTrustedAuth(url);
 
   // ── First-party password vault ──
@@ -145,29 +169,41 @@ if (!app.requestSingleInstanceLock()) {
   const readVault = () => { try { return JSON.parse(fs.readFileSync(vaultFile(), 'utf8')); } catch (_) { return {}; } };
   const writeVault = (v) => { try { fs.writeFileSync(vaultFile(), JSON.stringify(v), { mode: 0o600 }); } catch (_) {} };
   const canVault = () => { try { return safeStorage.isEncryptionAvailable(); } catch (_) { return false; } };
-  const senderIsEsms = (e) => {
-    try { return /(^|\.)esmsafrica\.io$/.test(new URL(e.senderFrame.url).hostname); } catch (_) { return false; }
+  // The vault is keyed by the CALLING frame's own origin - never by an origin
+  // the page supplies - so one eSMS subdomain can't read or overwrite the saved
+  // login of another (an XSS on any *.esmsafrica.io page must not be able to
+  // ask for auth.esmsafrica.io's password).
+  const senderOrigin = (e) => {
+    try {
+      const u = new URL(e.senderFrame.url);
+      return u.protocol === 'https:' && ESMS_HOST.test(u.hostname) ? u.origin : null;
+    } catch (_) { return null; }
   };
+  // Shell-only IPC (badge, vault admin, sign-out, updates) must come from the
+  // app window itself, not from a service page or popup.
+  const fromShell = (e) => !!(win && !win.isDestroyed() && e.sender === win.webContents);
   const enc = (s) => safeStorage.encryptString(s).toString('base64');
   const dec = (b64) => safeStorage.decryptString(Buffer.from(b64, 'base64'));
 
-  ipcMain.handle('vault-get', (e, origin) => {
-    if (!senderIsEsms(e) || !canVault()) return null;
+  ipcMain.handle('vault-get', (e) => {
+    const origin = senderOrigin(e);
+    if (!origin || !canVault()) return null;
     const rec = readVault()[origin];
     if (!rec || !rec.p) return null;
     try { return { username: rec.u ? dec(rec.u) : '', password: dec(rec.p) }; } catch (_) { return null; }
   });
   ipcMain.handle('vault-save', (e, data) => {
-    if (!senderIsEsms(e) || !canVault() || !data || !data.password) return false;
+    const origin = senderOrigin(e);
+    if (!origin || !canVault() || !data || typeof data.password !== 'string' || !data.password) return false;
     try {
       const v = readVault();
-      v[data.origin] = { u: data.username ? enc(data.username) : '', p: enc(data.password) };
+      v[origin] = { u: data.username ? enc(data.username) : '', p: enc(data.password) };
       writeVault(v);
       return true;
     } catch (_) { return false; }
   });
-  ipcMain.handle('vault-count', () => Object.keys(readVault()).length);
-  ipcMain.on('vault-clear', () => { writeVault({}); toRenderer('vault-changed', 0); });
+  ipcMain.handle('vault-count', (e) => (fromShell(e) ? Object.keys(readVault()).length : 0));
+  ipcMain.on('vault-clear', (e) => { if (!fromShell(e)) return; writeVault({}); toRenderer('vault-changed', 0); });
   app.on('web-contents-created', (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
       if (isAllowedInApp(url)) {
@@ -177,20 +213,35 @@ if (!app.requestSingleInstanceLock()) {
           action: 'allow',
           overrideBrowserWindowOptions: {
             width: 480, height: 720, autoHideMenuBar: true,
-            webPreferences: { partition: 'persist:esms', contextIsolation: true, nodeIntegration: false, sandbox: false },
+            webPreferences: { partition: 'persist:esms', contextIsolation: true, nodeIntegration: false, sandbox: true },
           },
         };
       }
-      shell.openExternal(url);
+      openExternalSafe(url);
       return { action: 'deny' };
     });
     contents.on('will-navigate', (ev, url) => {
+      // The shell window only ever shows its own bundled page: never let it be
+      // navigated away (e.g. a link or file dropped onto the window), since it
+      // carries the privileged preload bridge.
+      if (win && contents === win.webContents) {
+        if (url.split(/[?#]/)[0] !== SHELL_URL) { ev.preventDefault(); openExternalSafe(url); }
+        return;
+      }
       // Keep eSMS and trusted auth/payment hosts inside the webview session; push
-      // everything else out to the system browser.
+      // everything else out to the system browser. (OAuth / payment popups are
+      // left free to follow their provider's redirects.)
       if (contents.getType() === 'webview' && !isAllowedInApp(url)) {
         ev.preventDefault();
-        shell.openExternal(url);
+        openExternalSafe(url);
       }
+    });
+    // Service panes must stay isolated, whatever the renderer asks for.
+    contents.on('will-attach-webview', (ev, webPreferences, params) => {
+      webPreferences.nodeIntegration = false;
+      webPreferences.nodeIntegrationInSubFrames = false;
+      webPreferences.contextIsolation = true;
+      if (params.src && params.src !== 'about:blank' && !isAllowedInApp(params.src)) ev.preventDefault();
     });
   });
 
@@ -220,8 +271,13 @@ if (!app.requestSingleInstanceLock()) {
     try {
       const ses = session.fromPartition('persist:esms');
       const ALLOW = new Set(['notifications', 'clipboard-read', 'clipboard-sanitized-write']);
-      ses.setPermissionRequestHandler((_wc, permission, cb) => cb(ALLOW.has(permission)));
-      ses.setPermissionCheckHandler((_wc, permission) => ALLOW.has(permission));
+      // Only eSMS pages get them - not Google/GitHub/Paystack or embedded frames.
+      const esmsOrigin = (u) => { try { return isInternal(u); } catch (_) { return false; } };
+      ses.setPermissionRequestHandler((wc, permission, cb, details) => {
+        const origin = (details && details.requestingUrl) || (wc && wc.getURL && wc.getURL()) || '';
+        cb(ALLOW.has(permission) && esmsOrigin(origin));
+      });
+      ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => ALLOW.has(permission) && esmsOrigin(requestingOrigin));
     } catch (_) {}
 
     Menu.setApplicationMenu(buildMenu());
@@ -276,8 +332,13 @@ if (!app.requestSingleInstanceLock()) {
       } catch (_) {}
     };
     setTimeout(refreshIdentity, 8000);                   // shortly after launch
+    // A reloaded or re-created shell renderer starts with every gated pane
+    // hidden; forget the cached entitlements so the next check re-sends them
+    // (otherwise Admin/Support stayed hidden after a shell reload, or after
+    // closing and reopening the window on macOS).
+    onShellLoaded = () => { lastEnt = ''; refreshIdentity(); };
     setInterval(refreshIdentity, 60 * 1000);             // pick up sign-in / role changes
-    win.on('focus', refreshIdentity);
+    app.on('browser-window-focus', () => refreshIdentity());   // any window, incl. a re-created one
 
     // ── Auto-updates (GitHub Releases via electron-updater) ──
     // Always check, auto-download, and auto-restart into the new version - no
@@ -293,8 +354,15 @@ if (!app.requestSingleInstanceLock()) {
     // valid signature), and download can error the same way. So whenever the
     // in-place update can't be applied, fall back to opening the release download
     // page - the update still reaches the user, just via a manual install.
+    // The banner shows every time, but the browser is opened at most once per
+    // version per session: the 30-minute re-check would otherwise reopen the
+    // release page in the browser over and over on an unsigned macOS build.
+    let downloadOpenedFor = null;
     const openDownload = () => {
       toRenderer('update-status', { state: 'manual', version: availableVersion, url: RELEASES_URL });
+      const v = availableVersion || 'latest';
+      if (downloadOpenedFor === v) return;
+      downloadOpenedFor = v;
       try { shell.openExternal(RELEASES_URL); } catch (_) {}
     };
     // Attempt an in-place relaunch; if the app is still alive shortly after (the
@@ -341,7 +409,8 @@ if (!app.requestSingleInstanceLock()) {
 
   // Restart to apply a downloaded update. If the in-place install can't run
   // (unsigned macOS), fall back to opening the release download page.
-  ipcMain.on('restart-to-update', () => {
+  ipcMain.on('restart-to-update', (e) => {
+    if (!fromShell(e)) return;
     let quitting = false;
     app.once('before-quit', () => { quitting = true; });
     try { autoUpdater.quitAndInstall(false, true); } catch (_) {}
@@ -354,10 +423,11 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // Manual update check from the settings menu.
-  ipcMain.on('check-updates', () => { autoUpdater.checkForUpdates().catch(() => {}); });
+  ipcMain.on('check-updates', (e) => { if (fromShell(e)) autoUpdater.checkForUpdates().catch(() => {}); });
 
   // Sign out everywhere: wipe the shared session (cookies + storage).
-  ipcMain.handle('sign-out', async () => {
+  ipcMain.handle('sign-out', async (e) => {
+    if (!fromShell(e)) return false;
     try {
       const ses = session.fromPartition('persist:esms');
       await ses.clearStorageData();
@@ -366,7 +436,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // ── Never stay crashed: recover the shell if its renderer dies ──
-  ipcMain.on('shell-recover', () => { if (win && !win.isDestroyed()) win.reload(); });
+  ipcMain.on('shell-recover', (e) => { if (fromShell(e) && win && !win.isDestroyed()) win.reload(); });
 
   app.on('second-instance', (_e, argv) => {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }

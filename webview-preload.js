@@ -11,7 +11,7 @@
 
 const { ipcRenderer } = require('electron');
 
-const IS_ESMS = /(^|\.)esmsafrica\.io$/i.test(location.hostname);
+const IS_ESMS = location.protocol === 'https:' && /(^|\.)esmsafrica\.io$/i.test(location.hostname);
 
 if (IS_ESMS) {
   let filled = false;      // fill the form only once per page load
@@ -69,7 +69,8 @@ if (IS_ESMS) {
     const f = findFields();
     if (!f || !f.pw) return;
     let creds = null;
-    try { creds = await ipcRenderer.invoke('vault-get', location.origin); } catch (_) {}
+    // The main process keys the vault by this frame's own origin.
+    try { creds = await ipcRenderer.invoke('vault-get'); } catch (_) {}
     if (!creds || !creds.password) return;
     filled = true;
     if (f.user && creds.username && !f.user.value) setValue(f.user, creds.username);
@@ -84,7 +85,7 @@ if (IS_ESMS) {
     if (!f || !f.pw || !f.pw.value) return;
     lastSave = now;
     ipcRenderer
-      .invoke('vault-save', { origin: location.origin, username: f.user ? f.user.value : '', password: f.pw.value })
+      .invoke('vault-save', { username: f.user ? f.user.value : '', password: f.pw.value })
       .then((ok) => { if (ok) chip('Password saved to eSMS Keychain'); })
       .catch(() => {});
   }
