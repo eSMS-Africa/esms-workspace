@@ -23,7 +23,7 @@ rail (native traffic lights inset on macOS) drives the switching.
   on the shared session (on launch, on focus, and periodically), derives entitlements, and
   only then reveals - and only then loads - a gated pane. Losing access bounces you out and
   unloads the pane.
-- **In-app auth and payments.** Google / GitHub OAuth and Paystack checkout are treated as
+- **In-app auth and payments.** Google / GitHub OAuth and Flutterwave checkout (card and mobile money) are treated as
   **trusted hosts** and kept inside the shared session (popups open as child windows on the
   same `persist:esms` partition), so sign-in and card top-ups complete in the app instead of
   being ejected to the system browser and losing the session. Every other off-domain link
@@ -129,7 +129,7 @@ hosts. The only env vars are CI/build secrets consumed by the Release workflow:
 ## Security model
 
 - Panes and popups stay in the app only for `https://*.esmsafrica.io` plus the trusted
-  sign-in / checkout hosts (Google, GitHub, Paystack, Pesapal); anything else opens in the
+  sign-in / checkout hosts (Google, GitHub, Flutterwave); anything else opens in the
   system browser, and only `http(s)`, `mailto` and `tel` links are ever handed to the OS.
 - The saved-logins vault is keyed by the calling page's own origin, so one eSMS subdomain can
   never read another's saved password. Shell-only IPC (badge, vault admin, sign-out, updates)

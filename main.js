@@ -144,6 +144,12 @@ if (!app.requestSingleInstanceLock()) {
   // shared session (persist:esms). Without this, Google/GitHub OAuth and card
   // checkout get ejected to the system browser and lose the session, so sign-in
   // and card top-ups can never finish in the app.
+  const FLUTTERWAVE_CHECKOUT_HOSTS = new Set([
+    'flutterwave.com',
+    'checkout.flutterwave.com',
+    'ravemodal.flutterwave.com',
+    'checkout.sgmpayment.com',
+  ]);
   const isTrustedAuth = (url) => {
     try {
       const u = new URL(url);
@@ -152,10 +158,10 @@ if (!app.requestSingleInstanceLock()) {
       return (
         h === 'accounts.google.com' ||
         h === 'github.com' || h === 'api.github.com' ||
-        /(^|\.)paystack\.(com|co)$/.test(h) ||
-        // Card top-ups now go through Pesapal (pay.pesapal.com): keep checkout in
-        // the app session so the return to /topup/result is still signed in.
-        /(^|\.)pesapal\.com$/.test(h)
+        // Card and mobile money top-ups go through Flutterwave hosted checkout:
+        // keep it in the app session so the return to /topup/result is still
+        // signed in. checkout.sgmpayment.com is Flutterwave's Kenya checkout.
+        FLUTTERWAVE_CHECKOUT_HOSTS.has(h)
       );
     } catch (_) { return false; }
   };
@@ -207,7 +213,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('web-contents-created', (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
       if (isAllowedInApp(url)) {
-        // Open in a child window that shares the login session so OAuth / Paystack
+        // Open in a child window that shares the login session so OAuth / Flutterwave
         // popups complete against the same cookies as the app.
         return {
           action: 'allow',
@@ -271,7 +277,7 @@ if (!app.requestSingleInstanceLock()) {
     try {
       const ses = session.fromPartition('persist:esms');
       const ALLOW = new Set(['notifications', 'clipboard-read', 'clipboard-sanitized-write']);
-      // Only eSMS pages get them - not Google/GitHub/Paystack or embedded frames.
+      // Only eSMS pages get them - not Google/GitHub/Flutterwave or embedded frames.
       const esmsOrigin = (u) => { try { return isInternal(u); } catch (_) { return false; } };
       ses.setPermissionRequestHandler((wc, permission, cb, details) => {
         const origin = (details && details.requestingUrl) || (wc && wc.getURL && wc.getURL()) || '';
