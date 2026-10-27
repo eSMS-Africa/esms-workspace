@@ -15,7 +15,7 @@ class BrowserWindow extends EventEmitter {
   static getAllWindows(){ return [mainWin]; }
 }
 const app = new EventEmitter();
-Object.assign(app, { requestSingleInstanceLock:()=>true, setAsDefaultProtocolClient(){}, getPath:()=>userData, getVersion:()=>'0.4.3',
+Object.assign(app, { requestSingleInstanceLock:()=>true, setAsDefaultProtocolClient(){}, getPath:()=>userData, getVersion:()=>'0.5.0',
   userAgentFallback:'UA', whenReady:()=>Promise.resolve(), setBadgeCount(){}, quit(){} });
 const sesHandlers = {};
 const ses = { getUserAgent:()=>'UA', setUserAgent(){}, setPermissionRequestHandler(h){sesHandlers.req=h;}, setPermissionCheckHandler(h){sesHandlers.check=h;}, clearStorageData: async()=>{} };
@@ -23,7 +23,7 @@ const electron = { app, BrowserWindow, shell:{ openExternal:(u)=>opened.push(u) 
   ipcMain:{ on:(c,h)=>ipcOn[c]=h, handle:(c,h)=>ipcHandle[c]=h },
   Menu:{ setApplicationMenu(){}, buildFromTemplate:()=>({}) }, nativeImage:{ createFromDataURL:()=>({}) },
   safeStorage:{ isEncryptionAvailable:()=>true, encryptString:(s)=>Buffer.from('E'+s), decryptString:(b)=>b.toString().slice(1) },
-  session:{ fromPartition:()=>ses }, net:{ request:()=>({ setHeader(){}, on(){}, end(){} }) } };
+  session:{ fromPartition:()=>ses, defaultSession:{ setPermissionRequestHandler(h){sesHandlers.defReq=h;}, setPermissionCheckHandler(h){sesHandlers.defCheck=h;} } }, net:{ request:()=>({ setHeader(){}, on(){}, end(){} }) } };
 const updater = new EventEmitter(); updater.checkForUpdates = () => Promise.resolve(); updater.checkForUpdatesAndNotify = () => Promise.resolve(); updater.quitAndInstall = () => {};
 const origLoad = Module._load;
 Module._load = function (req, ...rest) { if (req === 'electron') return electron; if (req === 'electron-updater') return { autoUpdater: updater }; return origLoad.call(this, req, ...rest); };
@@ -78,5 +78,11 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m);
   ok(blocked && prefs.nodeIntegration === false, 'foreign webview blocked + node off');
   blocked = false; shellWc.emit('will-attach-webview', { preventDefault: () => blocked = true }, {}, { src: '' });
   ok(!blocked, 'lazy (no src) webview allowed');
+  const p2 = { preload: '/tmp/evil.js', preloadURL: 'file:///tmp/evil.js', sandbox: false };
+  shellWc.emit('will-attach-webview', { preventDefault(){} }, p2, { src: 'https://sms.esmsafrica.io/' });
+  ok(p2.preload === path.join(path.dirname(MAIN), 'webview-preload.js') && !('preloadURL' in p2) && p2.sandbox === true, 'pane preload forced to ours, sandboxed');
+  blocked = false; wv.emit('will-attach-webview', { preventDefault: () => blocked = true }, {}, { src: 'https://sms.esmsafrica.io/' });
+  ok(blocked, 'a service page cannot attach its own webview');
+  let dg; sesHandlers.defReq(null, 'notifications', (g) => dg = g); ok(dg === false && sesHandlers.defCheck(null, 'notifications', 'file://') === false, 'shell session grants no permissions');
   console.log(fails ? `${fails} FAILED` : 'ALL OK'); process.exit(fails ? 1 : 0);
 })();

@@ -56,6 +56,13 @@ if (!app.requestSingleInstanceLock()) {
     } catch (_) {}
   }
 
+  // The only preload a service <webview> may run. In a packaged app __dirname is
+  // inside app.asar; the file is unpacked (build.asarUnpack) so use that copy.
+  const WV_PRELOAD = (() => {
+    const p = path.join(__dirname, 'webview-preload.js');
+    return p.includes(`app.asar${path.sep}`) ? p.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`) : p;
+  })();
+
   function createWindow() {
     const st = loadWindowState();
     win = new BrowserWindow({
@@ -75,7 +82,9 @@ if (!app.requestSingleInstanceLock()) {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,              // trusted preload needs path/url/fs; renderer stays isolated
+        sandbox: true,               // the shell preload only uses contextBridge/ipcRenderer
+        // Sandboxed preloads can't require('path'), so hand them the webview preload URL.
+        additionalArguments: [`--esms-wv-preload=${pathToFileURL(WV_PRELOAD).href}`],
         webviewTag: true,            // the service panes are <webview>s
         spellcheck: true,
       },
@@ -244,9 +253,16 @@ if (!app.requestSingleInstanceLock()) {
     });
     // Service panes must stay isolated, whatever the renderer asks for.
     contents.on('will-attach-webview', (ev, webPreferences, params) => {
+      // Only the shell window may create service panes.
+      if (!win || contents !== win.webContents) { ev.preventDefault(); return; }
       webPreferences.nodeIntegration = false;
       webPreferences.nodeIntegrationInSubFrames = false;
       webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+      webPreferences.webSecurity = true;
+      // Whatever preload the renderer asked for, a pane only ever gets ours.
+      delete webPreferences.preloadURL;
+      webPreferences.preload = WV_PRELOAD;
       if (params.src && params.src !== 'about:blank' && !isAllowedInApp(params.src)) ev.preventDefault();
     });
   });
@@ -284,6 +300,12 @@ if (!app.requestSingleInstanceLock()) {
         cb(ALLOW.has(permission) && esmsOrigin(origin));
       });
       ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => ALLOW.has(permission) && esmsOrigin(requestingOrigin));
+    } catch (_) {}
+
+    // The shell window (default session) is a local page: it needs no permissions.
+    try {
+      session.defaultSession.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
+      session.defaultSession.setPermissionCheckHandler(() => false);
     } catch (_) {}
 
     Menu.setApplicationMenu(buildMenu());
